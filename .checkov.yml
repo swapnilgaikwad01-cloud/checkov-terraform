@@ -1,0 +1,35 @@
+framework:
+  - terraform
+  - dockerfile
+  - secrets
+
+output:
+  - cli
+  - junitxml
+
+soft-fail: true
+
+skip-check:
+  # Skip checks that might not be relevant for development
+  - CKV_AWS_18  # S3 Bucket should have access logging configured
+  - CKV_AWS_21  # S3 Bucket should have MFA delete enabled
+
+# Custom severity levels
+severity:
+  HIGH:
+    - CKV_AWS_2   # S3 Bucket should not allow public access
+    - CKV_AWS_20  # S3 Bucket should not allow public read access
+  MEDIUM:
+    - CKV_AWS_144 # S3 bucket should have versioning enabled
+  LOW:
+    - CKV_AWS_61  # S3 bucket should have lifecycle configuration
+
+# Directory exclusions
+skip-path:
+  - .git
+  - .terraform
+  - node_modules
+
+# File exclusions
+skip-file:
+  - "*.tfvars"

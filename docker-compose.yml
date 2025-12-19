@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  checkov:
+    image: bridgecrew/checkov:latest
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: >
+      checkov -d . 
+      --framework terraform 
+      --output cli 
+      --output junitxml 
+      --output-file-path console,checkov-report.xml
+      --soft-fail
+
+  terraform:
+    image: hashicorp/terraform:1.6.0
+    volumes:
+      - .:/app
+    working_dir: /app
+    entrypoint: ["terraform"]
+
+  terraform-docs:
+    image: quay.io/terraform-docs/terraform-docs:latest
+    volumes:
+      - .:/app
+    working_dir: /app
