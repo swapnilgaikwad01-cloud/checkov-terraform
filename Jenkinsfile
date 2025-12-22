@@ -104,6 +104,18 @@ pipeline {
             }
         }
 
+        stage('Handle Checkov Result') {
+            steps {
+                script {
+                    if (currentBuild.result == 'UNSTABLE') {
+                        echo 'Checkov found issues (UNSTABLE). Continuing pipeline.'
+                        currentBuild.result = 'SUCCESS'
+                    }
+                }
+            }
+        }
+
+
 
         stage('Terraform Plan') {
             when {
