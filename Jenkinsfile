@@ -1,111 +1,154 @@
 pipeline {
-    agent any
+    agent none
     
     environment {
         CHECKOV_VERSION = '3.2.0'
         TERRAFORM_VERSION = '1.6.0'
-        PATH = "/usr/local/bin:/opt/homebrew/bin:${env.PATH}"
     }
     
     stages {
         stage('Checkout') {
+            agent any
             steps {
-                echo 'Checking out code from Git repository'
-                 checkout scm
-            }
-        }
-        
-        stage('Setup Tools') {
-            steps {
-                sh '''
-                    # Verify Docker is working
-                    docker --version
-                    
-                    # Pull required images
-                    docker pull bridgecrew/checkov:${CHECKOV_VERSION}
-                    docker pull hashicorp/terraform:${TERRAFORM_VERSION}
-                    
-                    # Test Checkov
-                    docker run --rm bridgecrew/checkov:${CHECKOV_VERSION} --version
-                '''
+                checkout scm
+                stash includes: '**/*', name: 'source-code'
             }
         }
         
         stage('Terraform Validation') {
+            agent {
+                docker {
+                    image "hashicorp/terraform:${env.TERRAFORM_VERSION}"
+                    args '-u root'
+                }
+            }
             steps {
+                unstash 'source-code'
                 sh '''
-                    docker run --rm -v "$(pwd):/workspace" -w /workspace \
-                        hashicorp/terraform:${TERRAFORM_VERSION} \
-                        sh -c "cd projects/prod && terraform init -backend=false && terraform validate"
+                    cd projects/prod
+                    terraform init -backend=false
+                    terraform validate
                     
-                    docker run --rm -v "$(pwd):/workspace" -w /workspace \
-                        hashicorp/terraform:${TERRAFORM_VERSION} \
-                        sh -c "cd projects/non-prod && terraform init -backend=false && terraform validate"
+                    cd ../non-prod
+                    terraform init -backend=false
+                    terraform validate
                 '''
             }
         }
         
         stage('Checkov Security Scan') {
-            steps {
-                sh '''
-                    docker run --rm -v "$(pwd):/app" -w /app \
-                        bridgecrew/checkov:${CHECKOV_VERSION} \
-                        checkov -d . \
-                            --framework terraform \
-                            --output cli \
-                            --output junitxml \
-                            --output-file-path console,checkov-report.xml \
-                            --soft-fail
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'checkov-report.xml', fingerprint: true, allowEmptyArchive: true
-                    junit testResults: 'checkov-report.xml', allowEmptyResults: true
+            agent {
+                docker {
+                    image "bridgecrew/checkov:${env.CHECKOV_VERSION}"
+                    args '-u root'
                 }
+            }
+            steps {
+                unstash 'source-code'
+                sh '''
+                    checkov -d . \
+                        --framework terraform \
+                        --output cli \
+                        --output junitxml \
+                        --output-file-path console,checkov-report.xml \
+                        --soft-fail
+                '''
+                stash includes: 'checkov-report.xml', name: 'checkov-results', allowEmpty: true
             }
         }
         
-        stage('Generate HTML Report') {
-            steps {
-                sh '''
-                    docker run --rm -v "$(pwd):/app" -w /app \
-                        bridgecrew/checkov:${CHECKOV_VERSION} \
-                        checkov -d . \
-                            --framework terraform \
-                            --output json \
-                            --output-file-path checkov-detailed-report.json \
-                            --soft-fail
-                '''
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'checkov-detailed-report.json', fingerprint: true, allowEmptyArchive: true
+        stage('Generate Reports') {
+            agent {
+                docker {
+                    image "bridgecrew/checkov:${env.CHECKOV_VERSION}"
+                    args '-u root'
                 }
+            }
+            steps {
+                unstash 'source-code'
+                sh '''
+                    checkov -d . \
+                        --framework terraform \
+                        --output json \
+                        --output sarif \
+                        --output-file-path checkov-report.json,checkov-sarif.json \
+                        --soft-fail
+                '''
+                stash includes: '*.json', name: 'reports', allowEmpty: true
             }
         }
         
         stage('Terraform Plan') {
             when {
-                expression { params.RUN_TERRAFORM_PLAN == true }
+                anyOf {
+                    branch 'main'
+                    branch 'master'
+                    expression { return params.RUN_TERRAFORM_PLAN == true }
+                }
             }
             parallel {
                 stage('Plan - Production') {
+                    agent {
+                        docker {
+                            image "hashicorp/terraform:${env.TERRAFORM_VERSION}"
+                            args '-u root'
+                        }
+                    }
                     steps {
+                        unstash 'source-code'
                         sh '''
-                            docker run --rm -v "$(pwd):/workspace" -w /workspace \
-                                hashicorp/terraform:${TERRAFORM_VERSION} \
-                                sh -c "cd projects/prod && terraform init -backend=false && terraform plan -out=prod.tfplan"
+                            cd projects/prod
+                            terraform init -backend=false
+                            terraform plan -out=prod.tfplan
                         '''
+                        stash includes: 'projects/prod/prod.tfplan', name: 'prod-plan', allowEmpty: true
                     }
                 }
                 stage('Plan - Non-Production') {
+                    agent {
+                        docker {
+                            image "hashicorp/terraform:${env.TERRAFORM_VERSION}"
+                            args '-u root'
+                        }
+                    }
                     steps {
+                        unstash 'source-code'
                         sh '''
-                            docker run --rm -v "$(pwd):/workspace" -w /workspace \
-                                hashicorp/terraform:${TERRAFORM_VERSION} \
-                                sh -c "cd projects/non-prod && terraform init -backend=false && terraform plan -out=nonprod.tfplan"
+                            cd projects/non-prod
+                            terraform init -backend=false
+                            terraform plan -out=nonprod.tfplan
                         '''
+                        stash includes: 'projects/non-prod/nonprod.tfplan', name: 'nonprod-plan', allowEmpty: true
+                    }
+                }
+            }
+        }
+        
+        stage('Publish Results') {
+            agent any
+            steps {
+                unstash 'checkov-results'
+                unstash 'reports'
+                
+                // Archive artifacts
+                archiveArtifacts artifacts: '*.xml,*.json', fingerprint: true, allowEmptyArchive: true
+                
+                // Publish test results
+                publishTestResults testResultsPattern: 'checkov-report.xml', allowEmptyResults: true
+                
+                // Publish HTML reports if plugin available
+                script {
+                    try {
+                        publishHTML([
+                            allowMissing: true,
+                            alwaysLinkToLastBuild: true,
+                            keepAll: true,
+                            reportDir: '.',
+                            reportFiles: 'checkov-report.json',
+                            reportName: 'Checkov Security Report'
+                        ])
+                    } catch (Exception e) {
+                        echo "HTML Publisher plugin not available: ${e.message}"
                     }
                 }
             }
@@ -114,13 +157,18 @@ pipeline {
     
     post {
         always {
-            cleanWs()
+            node('') {
+                cleanWs()
+            }
         }
         success {
-            echo 'Pipeline completed successfully!'
+            echo '✅ Pipeline completed successfully!'
         }
         failure {
-            echo 'Pipeline failed. Check the logs for details.'
+            echo '❌ Pipeline failed. Check the logs for details.'
+        }
+        unstable {
+            echo '⚠️ Pipeline completed with warnings.'
         }
     }
 }
