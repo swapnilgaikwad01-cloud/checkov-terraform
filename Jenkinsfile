@@ -16,62 +16,43 @@ pipeline {
         
         stage('Setup Tools') {
             steps {
-                script {
-                    docker.image("python:3.11-slim").inside {
-                        sh '''
-                            pip install checkov==${CHECKOV_VERSION}
-                            checkov --version
-                        '''
-                    }
-                }
+                sh '''
+                    docker run --rm python:3.11-slim pip install checkov==${CHECKOV_VERSION}
+                    docker run --rm bridgecrew/checkov:${CHECKOV_VERSION} --version
+                '''
             }
         }
         
         stage('Terraform Validation') {
             steps {
-                script {
-                    docker.image("hashicorp/terraform:${TERRAFORM_VERSION}").inside {
-                        dir('projects/prod') {
-                            sh '''
-                                terraform init -backend=false
-                                terraform validate
-                            '''
-                        }
-                        dir('projects/non-prod') {
-                            sh '''
-                                terraform init -backend=false
-                                terraform validate
-                            '''
-                        }
-                    }
-                }
+                sh '''
+                    docker run --rm -v $(pwd):/workspace -w /workspace \
+                        hashicorp/terraform:${TERRAFORM_VERSION} \
+                        sh -c "cd projects/prod && terraform init -backend=false && terraform validate"
+                    
+                    docker run --rm -v $(pwd):/workspace -w /workspace \
+                        hashicorp/terraform:${TERRAFORM_VERSION} \
+                        sh -c "cd projects/non-prod && terraform init -backend=false && terraform validate"
+                '''
             }
         }
         
         stage('Checkov Security Scan') {
             steps {
-                script {
-                    docker.image("python:3.11-slim").inside {
-                        sh '''
-                            pip install checkov==${CHECKOV_VERSION}
-                            
-                            # Run Checkov scan on all Terraform files
-                            checkov -d . \
-                                --framework terraform \
-                                --output cli \
-                                --output junitxml \
-                                --output-file-path console,checkov-report.xml \
-                                --soft-fail
-                        '''
-                    }
-                }
+                sh '''
+                    docker run --rm -v $(pwd):/app -w /app \
+                        bridgecrew/checkov:${CHECKOV_VERSION} \
+                        checkov -d . \
+                            --framework terraform \
+                            --output cli \
+                            --output junitxml \
+                            --output-file-path console,checkov-report.xml \
+                            --soft-fail
+                '''
             }
             post {
                 always {
-                    // Archive the Checkov report
                     archiveArtifacts artifacts: 'checkov-report.xml', fingerprint: true
-                    
-                    // Publish JUnit test results
                     publishTestResults testResultsPattern: 'checkov-report.xml'
                 }
             }
@@ -79,20 +60,15 @@ pipeline {
         
         stage('Generate HTML Report') {
             steps {
-                script {
-                    docker.image("python:3.11-slim").inside {
-                        sh '''
-                            pip install checkov==${CHECKOV_VERSION}
-                            
-                            # Generate detailed HTML report
-                            checkov -d . \
-                                --framework terraform \
-                                --output json \
-                                --output-file-path checkov-detailed-report.json \
-                                --soft-fail
-                        '''
-                    }
-                }
+                sh '''
+                    docker run --rm -v $(pwd):/app -w /app \
+                        bridgecrew/checkov:${CHECKOV_VERSION} \
+                        checkov -d . \
+                            --framework terraform \
+                            --output json \
+                            --output-file-path checkov-detailed-report.json \
+                            --soft-fail
+                '''
             }
             post {
                 always {
@@ -108,30 +84,20 @@ pipeline {
             parallel {
                 stage('Plan - Production') {
                     steps {
-                        script {
-                            docker.image("hashicorp/terraform:${TERRAFORM_VERSION}").inside {
-                                dir('projects/prod') {
-                                    sh '''
-                                        terraform init -backend=false
-                                        terraform plan -out=prod.tfplan
-                                    '''
-                                }
-                            }
-                        }
+                        sh '''
+                            docker run --rm -v $(pwd):/workspace -w /workspace \
+                                hashicorp/terraform:${TERRAFORM_VERSION} \
+                                sh -c "cd projects/prod && terraform init -backend=false && terraform plan -out=prod.tfplan"
+                        '''
                     }
                 }
                 stage('Plan - Non-Production') {
                     steps {
-                        script {
-                            docker.image("hashicorp/terraform:${TERRAFORM_VERSION}").inside {
-                                dir('projects/non-prod') {
-                                    sh '''
-                                        terraform init -backend=false
-                                        terraform plan -out=nonprod.tfplan
-                                    '''
-                                }
-                            }
-                        }
+                        sh '''
+                            docker run --rm -v $(pwd):/workspace -w /workspace \
+                                hashicorp/terraform:${TERRAFORM_VERSION} \
+                                sh -c "cd projects/non-prod && terraform init -backend=false && terraform plan -out=nonprod.tfplan"
+                        '''
                     }
                 }
             }
