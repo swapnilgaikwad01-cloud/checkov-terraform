@@ -43,11 +43,17 @@ pipeline {
                 stage('Validate - Prod') {
                     steps {
                         sh '''
-                        docker run --rm \
-                          -v "$(pwd):/workspace" \
-                          -w /workspace/projects/prod \
-                          hashicorp/terraform:${TERRAFORM_VERSION} \
-                          sh -c "terraform init -backend=false && terraform validate"
+                          docker run --rm \
+                            -v "$(pwd):/workspace" \
+                            -w /workspace/projects/prod \
+                            hashicorp/terraform:${TERRAFORM_VERSION} \
+                            init -backend=false
+
+                          docker run --rm \
+                            -v "$(pwd):/workspace" \
+                            -w /workspace/projects/prod \
+                            hashicorp/terraform:${TERRAFORM_VERSION} \
+                            validate
                         '''
                     }
                 }
@@ -55,16 +61,23 @@ pipeline {
                 stage('Validate - NonProd') {
                     steps {
                         sh '''
-                        docker run --rm \
-                          -v "$(pwd):/workspace" \
-                          -w /workspace/projects/non-prod \
-                          hashicorp/terraform:${TERRAFORM_VERSION} \
-                          sh -c "terraform init -backend=false && terraform validate"
+                          docker run --rm \
+                            -v "$(pwd):/workspace" \
+                            -w /workspace/projects/non-prod \
+                            hashicorp/terraform:${TERRAFORM_VERSION} \
+                            init -backend=false
+
+                          docker run --rm \
+                            -v "$(pwd):/workspace" \
+                            -w /workspace/projects/non-prod \
+                            hashicorp/terraform:${TERRAFORM_VERSION} \
+                            validate
                         '''
                     }
                 }
             }
         }
+
 
         stage('Checkov Scan') {
             steps {
