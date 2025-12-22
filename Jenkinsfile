@@ -79,30 +79,31 @@ pipeline {
         }
 
 
-        stage('Checkov Scan') {
+        stage('Checkov Security Scan') {
             steps {
                 sh '''
-                    mkdir -p ${REPORTS_DIR}
+                    mkdir -p reports
 
                     docker run --rm \
                       -v "$(pwd):/app" \
                       -w /app \
                       bridgecrew/checkov:${CHECKOV_VERSION} \
-                      checkov \
-                        -d projects \
-                        --framework terraform \
-                        --output cli \
-                        --output junitxml \
-                        --output-file-path console,${REPORTS_DIR}/checkov.xml \
-                        --soft-fail
+                      -d projects \
+                      --framework terraform \
+                      --output cli \
+                      --output junitxml \
+                      --output-file-path console,reports/checkov.xml \
+                      --soft-fail
                 '''
             }
             post {
                 always {
                     junit testResults: 'reports/checkov.xml', allowEmptyResults: true
+                    archiveArtifacts artifacts: 'reports/*', fingerprint: true
                 }
             }
         }
+
 
         stage('Terraform Plan') {
             when {
