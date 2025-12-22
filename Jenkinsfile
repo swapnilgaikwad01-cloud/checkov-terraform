@@ -18,22 +18,15 @@ pipeline {
         stage('Setup Tools') {
             steps {
                 sh '''
-                    # Check if Docker is available
-                    which docker || echo "Docker not found in PATH"
+                    # Verify Docker is working
+                    docker --version
                     
-                    # Install Checkov using pip3 (fallback approach)
-                    if command -v pip3 >/dev/null 2>&1; then
-                        pip3 install --user checkov==${CHECKOV_VERSION}
-                        export PATH="$HOME/.local/bin:$PATH"
-                        checkov --version
-                    else
-                        echo "Neither Docker nor pip3 available. Installing pip3..."
-                        curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-                        python3 get-pip.py --user
-                        export PATH="$HOME/.local/bin:$PATH"
-                        pip3 install --user checkov==${CHECKOV_VERSION}
-                        checkov --version
-                    fi
+                    # Pull required images
+                    docker pull bridgecrew/checkov:${CHECKOV_VERSION}
+                    docker pull hashicorp/terraform:${TERRAFORM_VERSION}
+                    
+                    # Test Checkov
+                    docker run --rm bridgecrew/checkov:${CHECKOV_VERSION} --version
                 '''
             }
         }
@@ -41,21 +34,13 @@ pipeline {
         stage('Terraform Validation') {
             steps {
                 sh '''
-                    # Check if terraform is available locally
-                    if command -v terraform >/dev/null 2>&1; then
-                        echo "Using local Terraform installation"
-                        cd projects/prod && terraform init -backend=false && terraform validate
-                        cd ../non-prod && terraform init -backend=false && terraform validate
-                    else
-                        echo "Terraform not found locally. Downloading..."
-                        curl -fsSL https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_darwin_amd64.zip -o terraform.zip
-                        unzip terraform.zip
-                        chmod +x terraform
-                        ./terraform version
-                        
-                        cd projects/prod && ../../terraform init -backend=false && ../../terraform validate
-                        cd ../non-prod && ../../terraform init -backend=false && ../../terraform validate
-                    fi
+                    docker run --rm -v "$(pwd):/workspace" -w /workspace \
+                        hashicorp/terraform:${TERRAFORM_VERSION} \
+                        sh -c "cd projects/prod && terraform init -backend=false && terraform validate"
+                    
+                    docker run --rm -v "$(pwd):/workspace" -w /workspace \
+                        hashicorp/terraform:${TERRAFORM_VERSION} \
+                        sh -c "cd projects/non-prod && terraform init -backend=false && terraform validate"
                 '''
             }
         }
@@ -63,15 +48,14 @@ pipeline {
         stage('Checkov Security Scan') {
             steps {
                 sh '''
-                    export PATH="$HOME/.local/bin:$PATH"
-                    
-                    # Run Checkov scan on all Terraform files
-                    checkov -d . \
-                        --framework terraform \
-                        --output cli \
-                        --output junitxml \
-                        --output-file-path console,checkov-report.xml \
-                        --soft-fail
+                    docker run --rm -v "$(pwd):/app" -w /app \
+                        bridgecrew/checkov:${CHECKOV_VERSION} \
+                        checkov -d . \
+                            --framework terraform \
+                            --output cli \
+                            --output junitxml \
+                            --output-file-path console,checkov-report.xml \
+                            --soft-fail
                 '''
             }
             post {
@@ -85,14 +69,13 @@ pipeline {
         stage('Generate HTML Report') {
             steps {
                 sh '''
-                    export PATH="$HOME/.local/bin:$PATH"
-                    
-                    # Generate detailed JSON report
-                    checkov -d . \
-                        --framework terraform \
-                        --output json \
-                        --output-file-path checkov-detailed-report.json \
-                        --soft-fail
+                    docker run --rm -v "$(pwd):/app" -w /app \
+                        bridgecrew/checkov:${CHECKOV_VERSION} \
+                        checkov -d . \
+                            --framework terraform \
+                            --output json \
+                            --output-file-path checkov-detailed-report.json \
+                            --soft-fail
                 '''
             }
             post {
@@ -110,22 +93,18 @@ pipeline {
                 stage('Plan - Production') {
                     steps {
                         sh '''
-                            if command -v terraform >/dev/null 2>&1; then
-                                cd projects/prod && terraform init -backend=false && terraform plan -out=prod.tfplan
-                            else
-                                cd projects/prod && ../../terraform init -backend=false && ../../terraform plan -out=prod.tfplan
-                            fi
+                            docker run --rm -v "$(pwd):/workspace" -w /workspace \
+                                hashicorp/terraform:${TERRAFORM_VERSION} \
+                                sh -c "cd projects/prod && terraform init -backend=false && terraform plan -out=prod.tfplan"
                         '''
                     }
                 }
                 stage('Plan - Non-Production') {
                     steps {
                         sh '''
-                            if command -v terraform >/dev/null 2>&1; then
-                                cd projects/non-prod && terraform init -backend=false && terraform plan -out=nonprod.tfplan
-                            else
-                                cd projects/non-prod && ../../terraform init -backend=false && ../../terraform plan -out=nonprod.tfplan
-                            fi
+                            docker run --rm -v "$(pwd):/workspace" -w /workspace \
+                                hashicorp/terraform:${TERRAFORM_VERSION} \
+                                sh -c "cd projects/non-prod && terraform init -backend=false && terraform plan -out=nonprod.tfplan"
                         '''
                     }
                 }
