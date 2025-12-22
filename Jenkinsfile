@@ -2,6 +2,7 @@ pipeline {
     agent any
 
     environment {
+        PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         CHECKOV_VERSION = '3.2.0'
         TERRAFORM_VERSION = '1.6.0'
         REPORTS_DIR = 'reports'
@@ -14,6 +15,17 @@ pipeline {
                 sh '''
                     echo "🔍 Checking Docker availability"
                     docker version
+                '''
+            }
+        }
+
+        stage('Debug Environment') {
+            steps {
+                sh '''
+                    whoami
+                    echo "PATH=$PATH"
+                    which docker || true
+                    ls -la /usr/local/bin/docker || true
                 '''
             }
         }
