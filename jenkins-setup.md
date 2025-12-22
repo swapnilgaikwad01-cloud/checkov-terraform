@@ -24,7 +24,9 @@
 In the Pipeline section:
 - Definition: Pipeline script from SCM
 - SCM: Git
-- Repository URL: `/Users/swapnil.gaikwad01/poc/checkov` (local path)
+- Repository URL: `https://github.com/yourusername/terraform-checkov.git` (or your Git URL)
+- Credentials: Add if private repository
+- Branch Specifier: `*/main` (or `*/master`)
 - Script Path: `Jenkinsfile`
 
 ### 4. Add Build Parameters (Optional)
@@ -48,7 +50,7 @@ docker run --rm -v $(pwd):/app -w /app bridgecrew/checkov:latest checkov -d . --
 ```
 
 ## Pipeline Features
-- ✅ Code checkout from local repository
+- ✅ Code checkout from Git repository
 - ✅ Docker-based tool installation
 - ✅ Terraform validation
 - ✅ Checkov security scanning

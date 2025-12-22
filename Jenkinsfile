@@ -9,8 +9,9 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                echo 'Checking out code from local repository'
-                checkout scm
+                echo 'Checking out code from Git repository'
+                git branch: 'stage',
+                url: 'https://github.com/swapnilgaikwad01-cloud/checkov-terraform.git'
             }
         }
         
