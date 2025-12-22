@@ -10,7 +10,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo 'Checking out code from Git repository'
-                git branch: 'stage',
+                git branch: 'main',
                 url: 'https://github.com/swapnilgaikwad01-cloud/checkov-terraform.git'
             }
         }
