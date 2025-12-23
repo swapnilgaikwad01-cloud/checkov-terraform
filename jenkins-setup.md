@@ -1,5 +1,5 @@
 # Jenkins Setup for Checkov Integration
-#This is to setup Jenkins
+#This are the steps to setup Jenkins
 ## Prerequisites
 - Jenkins installed locally on Mac
 - Docker installed and running
