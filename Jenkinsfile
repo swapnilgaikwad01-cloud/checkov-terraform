@@ -3,12 +3,11 @@ pipeline {
 
     environment {
         TF_DIR = "."
-        CHECKOV_OUTPUT_DIR = "checkov-results"
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Terraform Repo') {
             steps {
                 checkout scm
             }
@@ -28,20 +27,13 @@ pipeline {
             }
         }
 
-        stage('Checkov Security Scan') {
+        stage('Checkov') {
             steps {
                 script {
                     docker.image('bridgecrew/checkov:latest').inside('--entrypoint=""') {
                         sh """
-                          mkdir -p ${CHECKOV_OUTPUT_DIR}
-
-                          checkov \
-                            -d ${TF_DIR} \
-                            --config-file .checkov.yaml \
-                            --output json \
-                            --output junitxml \
-                            --output-file-path ${CHECKOV_OUTPUT_DIR} \
-                            || true
+                          cd ${TF_DIR}
+                          checkov -d .
                         """
                     }
                 }
@@ -50,26 +42,11 @@ pipeline {
     }
 
     post {
-        always {
-            script {
-                if (fileExists("${CHECKOV_OUTPUT_DIR}/junitxml.xml")) {
-                    junit allowEmptyResults: true, testResults: "${CHECKOV_OUTPUT_DIR}/junitxml.xml"
-                }
-            }
-
-            archiveArtifacts artifacts: "${CHECKOV_OUTPUT_DIR}/*", fingerprint: true
-        }
-
-        unstable {
-            echo "⚠️ Checkov found security issues (build marked UNSTABLE)"
-        }
-
         success {
-            echo "✅ Terraform validation and Checkov scan completed successfully"
+            echo "✅ Terraform validation and Checkov scan passed"
         }
-
         failure {
-            echo "❌ Terraform validation failed"
+            echo "❌ Terraform or Checkov validation failed"
         }
     }
 }
