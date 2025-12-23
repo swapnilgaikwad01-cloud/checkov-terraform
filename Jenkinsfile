@@ -1,11 +1,6 @@
 pipeline {
     agent any
 
-    options {
-        timestamps()
-        ansiColor('xterm')
-    }
-
     environment {
         TF_DIR = "."
         CHECKOV_OUTPUT_DIR = "checkov-results"
