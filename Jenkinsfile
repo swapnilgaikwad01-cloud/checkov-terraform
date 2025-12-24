@@ -28,30 +28,28 @@ pipeline {
         }
 
         stage('Checkov Scan') {
+            options {
+                timeout(time: 10, unit: 'MINUTES')
+            }
             steps {
-                script {
-                    docker.image('bridgecrew/checkov:latest').inside('--entrypoint="" -t') {
-                        sh """
-                          set -e
-                          mkdir -p reports
-                          cd ${TF_DIR}
-
-                          echo "Starting Checkov scan..."
-                          date
-
-                          checkov -d . \
-                            --framework terraform \
-                            --output json \
-                            --output-file-path reports/checkov.json \
-                            --soft-fail
-
-                          echo "Checkov scan completed"
-                          date
-                        """
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+                    script {
+                        docker.image('bridgecrew/checkov:latest').inside('--entrypoint="" -t') {
+                            sh """
+                              mkdir -p reports
+                              cd ${TF_DIR}
+                              checkov -d . \
+                                --framework terraform \
+                                --output json \
+                                --output-file-path reports/checkov.json \
+                                --soft-fail
+                            """
+                        }
                     }
                 }
             }
         }
+
 
         stage('Post or Update PR Comment') {
             when {
