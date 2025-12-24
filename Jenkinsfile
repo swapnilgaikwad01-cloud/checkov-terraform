@@ -43,14 +43,42 @@ pipeline {
                 script {
                     docker.image('bridgecrew/checkov:latest').inside('--entrypoint=""') {
                         sh """
+                          mkdir -p reports
                           cd ${TF_DIR}
-                          checkov -d .
+
+                          checkov -d . \
+                            --framework terraform \
+                            --output sarif \
+                            --output-file-path reports/checkov.sarif \
+                            --soft-fail
                         """
                     }
                 }
             }
         }
-    }
+
+        stage('Publish Checkov PR Report') {
+            when {
+                changeRequest()
+            }
+            steps {
+                withCredentials([string(credentialsId: 'github-checks-token', variable: 'GITHUB_TOKEN')]) {
+                    publishChecks(
+                        name: 'Checkov Security Scan',
+                        summary: 'Infrastructure security analysis',
+                        detailsURL: "${env.BUILD_URL}",
+                        conclusion: 'NEUTRAL',
+                        output: [
+                            title: 'Checkov Results',
+                            summary: 'See security findings from Checkov scan'
+                        ],
+                        annotations: [],
+                        token: env.GITHUB_TOKEN
+                    )
+                }
+            }
+        }
+
 
     post {
         success {
