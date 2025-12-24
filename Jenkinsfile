@@ -37,23 +37,21 @@ pipeline {
                           cd ${TF_DIR}
 
                           echo "Starting Checkov scan..."
+                          date
+
                           checkov -d . \
                             --framework terraform \
                             --output json \
                             --output-file-path reports/checkov.json \
-                            --soft-fail \
-                            --no-color
+                            --soft-fail
 
                           echo "Checkov scan completed"
-
-                          grep -E "Passed checks:|Failed checks:|Skipped checks:" \
-                            reports/checkov.json || true
+                          date
                         """
                     }
                 }
             }
         }
-
 
         stage('Post or Update PR Comment') {
             when {
