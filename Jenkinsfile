@@ -30,26 +30,30 @@ pipeline {
         stage('Checkov Scan') {
             steps {
                 script {
-                    docker.image('bridgecrew/checkov:latest').inside('--entrypoint=""') {
+                    docker.image('bridgecrew/checkov:latest').inside('--entrypoint="" -t') {
                         sh """
+                          set -e
                           mkdir -p reports
                           cd ${TF_DIR}
 
+                          echo "Starting Checkov scan..."
                           checkov -d . \
                             --framework terraform \
                             --output json \
                             --output-file-path reports/checkov.json \
-                            --soft-fail
+                            --soft-fail \
+                            --no-color
 
-                          checkov -d . \
-                            --framework terraform \
-                            --quiet \
-                            | grep -E "Passed checks:|Failed checks:|Skipped checks:" > reports/checkov-summary.txt || true
+                          echo "Checkov scan completed"
+
+                          grep -E "Passed checks:|Failed checks:|Skipped checks:" \
+                            reports/checkov.json || true
                         """
                     }
                 }
             }
         }
+
 
         stage('Post or Update PR Comment') {
             when {
