@@ -14,15 +14,14 @@ pipeline {
         }
 
         stage('Docker Debug') {
-          steps {
-            sh '''
-              whoami
-              which docker || true
-              docker version || true
-            '''
-          }
+            steps {
+                sh '''
+                  whoami
+                  which docker || true
+                  docker version || true
+                '''
+            }
         }
-
 
         stage('Terraform Init & Validate') {
             steps {
@@ -78,7 +77,7 @@ pipeline {
                 }
             }
         }
-
+    }
 
     post {
         success {
